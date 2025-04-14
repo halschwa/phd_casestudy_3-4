@@ -1,0 +1,151 @@
+
+### load libraries
+
+# SQLite
+library(RSQLite) 
+#topic modelling
+library(tm) 
+# data viz
+library(ggplot2)
+library(gridExtra)
+# assess n. topics parameter for LDA
+library(ldatuning)
+# LDA
+library(topicmodels)
+# pipeline and data manipulation
+library(tidyverse)
+library(tidytext)
+library(reshape2)
+# similarity and clustering
+library(vegan)
+library(ggdendro)
+
+source("functions.R")
+
+### parameters 
+
+# minimum number of papers where a term appears to be included in the analysis
+minimumFrequency <- 2 #4 #6
+# number of terms to visualize for each found topic
+numTermsPerTopic <- 10 #15 #20
+
+# list of stopwords
+#wordsToIgnore <- c("arch", "archaeology", "archaeologist", "archaeological", "archæology", "archaeolog", "archæological", "archæologist","stone", "stones", "stonehenge", "stoneheng", "henge", "hengeworld", "mani", "ani", "many", "also", "can", "like", "within", "may", "paper", "one", "make", "particularly", "two", "often", "way", "without", "just", "however", "perhaps", "now", "great", "monument", "site", "article", "kilometres", "whether", "long", "small", "years", "early", "using", "well", "much", "first", "visitor", "around", "will", "authors", "including", "particular", "book", "archaeologists", "even", "study", "analysis", "british", "large", "direct", "rather", "bluestone", "madagascar", "settings", "shows", "use", "made", "year", "ways", "used", "three", "little", "might", "sarsens")
+# reduced list: I removed: monument, hengeworld, site, visitor, bluestone, madagascar, sarsens, british
+# also removed because no stemming, so they will never appear: "mani", "ani", 
+wordsToIgnore <- c("arch", "archaeology", "archaeologist", "archaeological", "archæology", "archaeolog", "archæological", "archæologist","stone", "stones", "stonehenge", "stoneheng", "henge", "many", "also", "can", "like", "within", "may", "paper", "one", "make", "particularly", "two", "often", "way", "without", "just", "however", "perhaps", "now", "great", "article", "kilometres", "whether", "long", "small", "years", "early", "using", "well", "much", "first", "around", "will", "authors", "including", "particular", "book", "archaeologists", "even", "study", "analysis", "large", "direct", "rather", "settings", "shows", "use", "made", "year", "ways", "used", "three", "little", "might")
+
+### main code 
+
+
+## 1. load the 3 datasets
+
+# connect to the SQLite database file
+conn <- dbConnect(RSQLite::SQLite(), "stonehengePapers.db")
+
+## 2. create corpus, dtm, and remove any empty text
+#first subsection: 1990 to 2001
+period1 <- getPeriod("period1")
+corpus1 <- createCorpus(period1)
+dtm1 <- createDTM(corpus1)
+
+presentIdx1 <- getPresentIdx(dtm1)
+dtm1 <- removeEmptyRows(presentIdx1, dtm1)
+period1 <- removeEmptyRows(presentIdx1, period1)
+
+#second subsection: 2002 to 2012
+period2 <- getPeriod("period2")
+corpus2 <- createCorpus(period2)
+dtm2 <- createDTM(corpus2)
+
+presentIdx2 <- getPresentIdx(dtm2)
+dtm2 <- removeEmptyRows(presentIdx2, dtm2)
+period2 <- removeEmptyRows(presentIdx2, period2)
+
+#third subsection: 2013 to 2022
+
+period3 <- getPeriod("period3")
+corpus3 <- createCorpus(period3)
+dtm3 <- createDTM(corpus3)
+
+presentIdx3 <- getPresentIdx(dtm3)
+dtm3 <- removeEmptyRows(presentIdx3, dtm3)
+period3 <- removeEmptyRows(presentIdx3, period3)
+
+# database connection not needed anymore
+dbDisconnect(conn)
+
+## 3. assess number of topics per corpus
+
+numTopicsPlot1 <- exploreNumberTopics(dtm1)
+# show the graph again: grid.arrange(numTopicsPlot1)
+numTopicsPlot2 <- exploreNumberTopics(dtm2)
+numTopicsPlot3 <- exploreNumberTopics(dtm3)
+
+# choose number of topics
+numTopics1 <- 10
+numTopics2 <- 11
+numTopics3 <- 11
+
+### 4. run LDAs
+lda1 <- LDA(dtm1, numTopics1, method = "Gibbs", control = list(iter = 1000, seed = 42, verbose = 25, alpha = 50/numTopics1))
+lda2 <- LDA(dtm2, numTopics2, method = "Gibbs", control = list(iter = 1000, seed = 42, verbose = 25, alpha = 50/numTopics2))
+lda3 <- LDA(dtm3, numTopics3, method = "Gibbs", control = list(iter = 1000, seed = 42, verbose = 25, alpha = 50/numTopics3))
+
+
+# 5. plot top terms per corpus
+topTerm1 <- getTopTerms(lda1, numTermsPerTopic)
+pdf("topTermsPeriod1.pdf", width=12, height=6)
+plotTopTerms(topTerm1)
+dev.off()
+
+topTerm2 <- getTopTerms(lda2, numTermsPerTopic)
+pdf("topTermsPeriod2.pdf", width=12, height=6)
+plotTopTerms(topTerm2)
+dev.off()
+
+topTerm3 <- getTopTerms(lda3, numTermsPerTopic)
+pdf("topTermsPeriod3.pdf", width=12, height=6)
+plotTopTerms(topTerm3)
+dev.off()
+
+## 6. create and restructure beta values to explore similarity
+
+beta1 <- melt(posterior(lda1)$terms, value.name="weight", varnames=c("topic","term"))
+beta2 <- melt(posterior(lda2)$terms, value.name="weight", varnames=c("topic","term"))
+beta3 <- melt(posterior(lda3)$terms, value.name="weight", varnames=c("topic","term"))
+
+beta1$period <- "P1"
+beta2$period <- "P2"
+beta3$period <- "P3"
+
+# create combined column PX_TY with 1 padding zero if required (to avoid 10 before 2)
+beta1$pt <- paste(beta1$period,sprintf("%02d",beta1$topic),sep="_T")
+beta2$pt <- paste(beta2$period,sprintf("%02d",beta2$topic),sep="_T")
+beta3$pt <- paste(beta3$period,sprintf("%02d",beta3$topic),sep="_T")
+
+# get the top 25 words per topic
+words1 <- beta1 %>% group_by(pt) %>% slice_max(weight, n=25)
+words2 <- beta2 %>% group_by(pt) %>% slice_max(weight, n=25)
+words3 <- beta3 %>% group_by(pt) %>% slice_max(weight, n=25)
+
+words <- rbind(words1, words2, words3)
+# create a matrix of PT - words
+wordsMatrix <- acast(words, pt~term, value.var="weight")
+# create a matrix of absence/presence
+wordsPresence <- wordsMatrix
+# change NAs for 0s and non NAs to 1s
+wordsPresence[!is.na(wordsPresence)] <- 1
+wordsPresence[is.na(wordsPresence)] <- 0
+# compute binary distance
+topicsDist <- as.matrix(vegdist(wordsPresence, method="bray", binary=T, upper=T))
+# get lower triangle to avoid duplication
+topicsDist[lower.tri(topicsDist)]<- NA
+# move from matrix to data frame to plot
+topicsDistDF <- melt(topicsDist, na.rm=T, varnames=c("topic1", "topic2"), value.name="distance")
+
+pdf("similarTopics.pdf", width=10, height=10)
+
+ggplot(topicDistDF, aes(x=topic1, y=topic2, fill=distance)) + geom_tile() + theme_bw() + scale_fill_gradient2(low = "indianred2", high = "white", midpoint = 0.99, limit = c(0.5,1))  + theme(axis.text.x = element_text(angle=45, hjust=0)) + scale_x_discrete(position="top") + theme(panel.background= element_rect(fill = "gray95"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.border = element_blank()) + theme(legend.position = "inside", legend.position.inside=c(0.6, 0.1), legend.direction="horizontal", legend.key.size = unit(2.5, 'cm'), legend.background=element_rect(fill="gray95")) + theme(plot.margin=unit(c(0.5,1,0.5,0.5), "cm")) + xlab("topic") + ylab("topic")
+
+dev.off()
