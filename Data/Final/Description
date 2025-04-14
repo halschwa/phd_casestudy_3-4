@@ -1,9 +1,22 @@
-Description of the uploaded file: stonehengePapers
+Description of the uploaded file: stonehengePapers.db
 
 This is the databases made up of the final count of 234 abstracts extracted from scopus and used to carry on the research for Case Study #3 and Cast Study #4 
 
 The databases contains:
   1] Table - 'papers'
-  2] View - 'period1'
-  3] View - 'period2'
-  4] View - 'period3'
+  2] Views - 'period1'
+  3] Views - 'period2'
+  4] Views - 'period3'
+
+For both Main-Technical (Case Study #3) and Main-Theory (Case Study #4) Views are needed within the table to set the parameters for each period
+Therfore, the views must be edited within stonehengePapers.db per the respective case study
+
+Main-Tehcnical:
+  period1: select * from papers where year<=2001
+  period2: select * from papers where year>=2002 and year<=2012
+  period3: select * from papers where year>=2013 and year<=2022
+
+Main-Theory: 
+  period1: select * from papers where year<=2000
+  period2: select * from papers where year>=2001 and year<=2011
+  period3: select * from papers where year>=2012 and year<=2022
