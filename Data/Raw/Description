@@ -1,0 +1,6 @@
+Description of te uploaded file: downloaded.csv
+
+This is the original csv direct from scopus containing all 639 abastracts that fit the search parameters
+
+This csv was manually cleaned and reviewed to make the final list of 234 abstracts used to build the stonehengePapers.db database (phd_casestudy-3/Data/Final)
+
